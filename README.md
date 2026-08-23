@@ -108,15 +108,19 @@ Agents communicate via **inbox files** — Markdown messages they send to each o
 
 ### Prerequisites
 
-- **Claude Code CLI** — install with `npm install -g @anthropic-ai/claude-code`, then `claude login`
-- **Claude Pro or Max subscription** — Pro ($20/mo) handles minimal team, Max ($100/mo) recommended for full team
+- **At least one coding CLI** (agents can be split across several — see [LLM Providers](#llm-providers-per-agent)):
+  - **Claude Code CLI** — `npm install -g @anthropic-ai/claude-code`, then `claude login`
+    (Claude Pro $20/mo handles the minimal team, Max $100/mo recommended for the full team)
+  - **OpenAI Codex CLI** *(optional)* — `npm install -g @openai/codex`, then `codex login`
+    (included with ChatGPT Plus/Pro — subscription, no API key)
+  - **MiniMax Coding Plan** *(optional)* — a Coding Plan key; runs through the Claude Code CLI
 - **Python 3.10+** with `pyyaml` (`pip install pyyaml`)
 - **Git** (optional: GitLab or GitHub repo for full integration)
 - **Isolated environment** (recommended) — VM, LXC container, or Docker container
 
 > **Important:** The agents have access to shell tools and will create files, run commands, and modify the workspace. We strongly recommend running AI Dev Team in a dedicated, isolated environment (VM, LXC, Docker) to prevent unintended changes to your host system.
 
-> **How it works under the hood:** Each agent is executed via `claude --print` with a carefully crafted system prompt and context. The orchestrator calls Claude Code CLI for each agent in sequence — no API key needed, it uses your Claude subscription directly.
+> **How it works under the hood:** Each agent is executed non-interactively (`claude --print`, or `codex exec` for Codex-backed agents) with a carefully crafted system prompt and context. The orchestrator runs each agent in sequence and reads its final message back — no API keys needed, it uses your subscriptions directly.
 
 ### Setup
 
@@ -410,7 +414,7 @@ ai-team/
 │
 ├── scripts/
 │   ├── orchestrator_cli.sh  # Main orchestrator
-│   ├── run_agent_cli.py     # Agent runner — calls claude --print
+│   ├── run_agent_cli.py     # Agent runner — dispatches to the agent's LLM provider
 │   ├── init_project.py      # Initialize a new project
 │   ├── init_integrations.py # Setup GitLab/GitHub + Git + Docker
 │   ├── merge_approved_mrs.py# Auto-merge approved MRs/PRs
@@ -422,6 +426,7 @@ ai-team/
 ├── integrations/
 │   ├── __init__.py          # IntegrationDispatcher (central router)
 │   ├── base.py              # BoardProvider ABC (shared interface)
+│   ├── llm_providers.py     # LLMProvider ABC — claude / codex / minimax per agent
 │   ├── git_client.py        # Git operations (branch, commit, push)
 │   ├── docker_client.py     # Docker/docker-compose operations
 │   ├── logging_config.py    # Shared logging and env loader
@@ -461,6 +466,57 @@ Defines 9 agents with detailed system prompts. Each agent has:
 - **name** — human-readable role name
 - **color** — emoji identifier
 - **system_prompt** — detailed instructions for behavior, communication, and output format
+- **provider** *(optional)* — which coding CLI runs this agent: `claude`, `codex` or `minimax`
+  (defaults to `global.default_provider`)
+
+### LLM Providers (per agent)
+
+One subscription running all nine agents hits its rate limit fast. Each agent can
+instead be assigned to a different coding CLI, so the load is spread across plans.
+
+| Provider | CLI | Auth | Billing |
+|----------|-----|------|---------|
+| `claude` | `claude --print` | `claude login` | Anthropic Pro/Max subscription |
+| `codex` | `codex exec` | `codex login` | ChatGPT Plus/Pro subscription (not the API) |
+| `minimax` | `claude --print` | `MINIMAX_API_KEY` | MiniMax Coding Plan subscription |
+
+MiniMax exposes an Anthropic-compatible endpoint, so it reuses the Claude Code CLI —
+only the endpoint, token and model name change.
+
+**Assign in `config/agents.yaml`:**
+
+```yaml
+global:
+  default_provider: claude    # used by any agent without its own `provider:`
+
+agents:
+  dev1:
+    provider: claude          # Anthropic Max
+  dev2:
+    provider: codex           # ChatGPT Plus/Pro
+  tester:
+    provider: minimax         # MiniMax Coding Plan
+```
+
+**Or override per agent in `config/.env`** (highest precedence, no config change needed):
+
+```bash
+AGENT_PROVIDER_DEV2=codex
+AGENT_PROVIDER_TESTER=minimax
+
+# Codex — uses the ChatGPT subscription saved by `codex login`
+CODEX_SANDBOX=workspace-write     # read-only | workspace-write | danger-full-access
+# CODEX_MODEL=gpt-5-codex
+
+# MiniMax Coding Plan
+MINIMAX_API_KEY=your-coding-plan-key
+# MINIMAX_BASE_URL=https://api.minimax.io/anthropic   # China: https://api.minimaxi.com/anthropic
+# MINIMAX_MODEL=MiniMax-M3[1m]
+```
+
+Resolution order: `AGENT_PROVIDER_<ID>` → `agents.yaml` `provider:` → `global.default_provider` → `claude`.
+Agents with no provider set keep running on Claude, so existing setups are unaffected.
+The provider used for each agent is recorded in `logs/runs/*.json`.
 
 ### `config/project.yaml`
 

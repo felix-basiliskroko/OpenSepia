@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-AI Dev Team — Agent Runner (Claude Code CLI version)
-Uses 'claude' CLI instead of API. Works with Pro/Max subscription.
+AI Dev Team — Agent Runner (coding-CLI version)
+Runs each agent on its assigned CLI (claude / codex / minimax) instead of
+raw APIs, so the team can share subscription plans across providers.
 
 Usage:
   python run_agent_cli.py --agent dev --verbose
@@ -15,7 +16,6 @@ import json
 import yaml
 import time
 import argparse
-import subprocess
 import logging
 import urllib.request
 import urllib.parse
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from integrations.logging_config import load_env
+from integrations.llm_providers import LLMProvider, resolve_agent_provider
 load_env()
 
 # =============================================================================
@@ -276,75 +277,36 @@ Rules:
 
 
 # =============================================================================
-# Calling Claude Code CLI
+# Calling the agent's coding CLI (Claude / Codex / MiniMax)
 # =============================================================================
-def call_claude_code(prompt: str, verbose: bool = False) -> str:
+def call_agent_cli(prompt: str, provider: LLMProvider, verbose: bool = False) -> str:
     """
-    Call Claude Code CLI with a prompt.
-    Returns the response as a string.
+    Run one agent turn on its assigned provider.
+    Returns the response text, or a string starting with "ERROR:".
     """
-    try:
-        # Call claude CLI
-        # --print = just print the response, no interactive mode
-        cmd = [
-            "claude",
-            "--print",              # Non-interactive, print response
-            "--allowedTools", "Bash,Edit,Write,Read,Glob,Grep",  # Agents need full access
-        ]
-
-        if verbose:
-            print(f"    Calling Claude Code CLI...")
-
-        # Unset CLAUDECODE — otherwise claude CLI refuses to run ("nested session")
-        env = os.environ.copy()
-        env.pop("CLAUDECODE", None)
-
-        # Send prompt via stdin
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=AGENT_TIMEOUT_SECONDS,
-            cwd=str(BASE_DIR),  # Working directory
-            env=env,
-        )
-
-        if result.returncode != 0:
-            logger.error(f"Claude Code error: {result.stderr}")
-            return f"ERROR: {result.stderr}"
-
-        return result.stdout
-
-    except subprocess.TimeoutExpired:
-        logger.error("Claude Code timeout (%d s)", AGENT_TIMEOUT_SECONDS)
-        return "ERROR: Timeout"
-    except FileNotFoundError:
-        logger.error("Claude Code CLI is not installed. Run: npm install -g @anthropic-ai/claude-code")
-        return "ERROR: Claude Code CLI is not installed"
-    except Exception as e:
-        logger.error(f"Claude Code error: {e}")
-        return f"ERROR: {e}"
+    return provider.run(prompt, cwd=BASE_DIR, verbose=verbose)
 
 
 def call_agent(agent_id: str, agents_config: dict, project_config: dict,
                verbose: bool = False) -> dict:
     """
-    Call an agent via Claude Code CLI.
+    Call an agent via its assigned coding CLI (claude, codex or minimax).
     """
     agent = agents_config["agents"][agent_id]
+
+    # Which CLI backs this agent (env override > agents.yaml > default)
+    provider = resolve_agent_provider(agent_id, agents_config)
 
     # Build context
     context = build_agent_context(agent_id, agents_config, project_config)
 
     if verbose:
         print(f"\n{'='*60}")
-        print(f"  {agent['color']} {agent['name']}")
+        print(f"  {agent['color']} {agent['name']}  [{provider.name}]")
         print(f"{'='*60}")
         print(f"  Context: {len(context)} chars")
 
-    # Call Claude Code
-    response = call_claude_code(context, verbose)
+    response = call_agent_cli(context, provider, verbose)
 
     if verbose:
         print(f"  Response: {len(response)} chars")
@@ -352,6 +314,7 @@ def call_agent(agent_id: str, agents_config: dict, project_config: dict,
     return {
         "agent_id": agent_id,
         "agent_name": agent["name"],
+        "provider": provider.name,
         "response": response,
         "timestamp": datetime.now().isoformat(),
         "context_size": len(context),
@@ -498,6 +461,14 @@ def apply_output(agent_id: str, result: dict, agents_config: dict,
     if verbose:
         print(f"  Files to write: {len(files)}")
 
+    # A provider whose model ignores the ---FILES--- contract writes nothing.
+    # Surface it: otherwise the agent looks like it ran fine but did no work.
+    if not files and result["response"].strip():
+        logger.warning(
+            "%s: no ---FILES--- section in the response (provider: %s) — nothing written",
+            agent_id, result.get("provider", "claude"),
+        )
+
     written = 0
     for file_info in files:
         path = file_info.get("path", "")
@@ -576,10 +547,11 @@ def log_run(results: list[dict[str, Any]]) -> dict[str, Any]:
 
     log_entry = {
         "timestamp": timestamp,
-        "method": "claude-code-cli",
+        "method": "coding-cli",
         "agents": [
             {
                 "agent": r["agent_name"],
+                "provider": r.get("provider", "claude"),
                 "context_chars": r.get("context_size", 0),
                 "response_chars": r.get("response_size", 0),
                 **({"error": r["error"]} if r.get("error") else {}),
@@ -712,8 +684,7 @@ def main() -> None:
         initialize_standup_file(sprint_num, cycle)
 
     print(f"\n🤖 AI Dev Team — Cycle {cycle}")
-    print(f"   Method: Claude Code CLI")
-    print(f"   Agents: {', '.join(agent_ids)}")
+    print(f"   Agents: {', '.join(f'{a} [{resolve_agent_provider(a, agents_config).name}]' for a in agent_ids)}")
     print(f"{'─'*50}")
 
     # Dry run?

@@ -46,3 +46,24 @@ def clean_env(monkeypatch):
     for var in env_vars:
         monkeypatch.delenv(var, raising=False)
     return monkeypatch
+
+
+@pytest.fixture
+def clean_llm_env(monkeypatch):
+    """Remove all LLM-provider env vars to ensure a clean state."""
+    env_vars = [
+        "CLAUDE_MODEL", "CLAUDECODE",
+        "CODEX_SANDBOX", "CODEX_MODEL", "CODEX_PREFER_API_KEY", "OPENAI_API_KEY",
+        "MINIMAX_API_KEY", "MINIMAX_BASE_URL", "MINIMAX_MODEL",
+        "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "AGENT_TIMEOUT_SECONDS",
+    ]
+    for agent in ["PO", "PM", "DEV1", "DEV2", "DEVOPS", "TESTER",
+                  "SEC_ANALYST", "SEC_ENGINEER", "SEC_PENTESTER"]:
+        env_vars.append(f"AGENT_PROVIDER_{agent}")
+    for var in env_vars:
+        monkeypatch.delenv(var, raising=False)
+    return monkeypatch

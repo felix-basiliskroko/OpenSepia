@@ -103,13 +103,20 @@ for agent in po pm dev1 dev2 devops tester sec_analyst sec_engineer sec_penteste
     touch "$PROJECT_DIR/board/inbox/${agent}.md"
 done
 
-# ---- Check Claude Code CLI ----
-if ! command -v claude &> /dev/null; then
-    echo "$(date) [WARN] Claude Code CLI not in PATH — agents will not run"
+# ---- Check agent CLIs (agents may be split across providers) ----
+AVAILABLE_CLIS=""
+command -v claude &> /dev/null && AVAILABLE_CLIS="${AVAILABLE_CLIS} claude"
+command -v codex  &> /dev/null && AVAILABLE_CLIS="${AVAILABLE_CLIS} codex"
+
+if [ -z "$AVAILABLE_CLIS" ]; then
+    echo "$(date) [WARN] No agent CLI in PATH — agents will not run"
     echo "  PATH=$PATH"
-    echo "  Install: npm install -g @anthropic-ai/claude-code"
+    echo "  Install: npm install -g @anthropic-ai/claude-code   (claude, minimax)"
+    echo "           npm install -g @openai/codex                (codex)"
 else
-    echo "  Claude CLI: $(claude --version 2>/dev/null || echo 'ok')"
+    echo "  Agent CLIs:${AVAILABLE_CLIS}"
+    command -v claude &> /dev/null && echo "  Claude CLI: $(claude --version 2>/dev/null || echo 'ok')"
+    command -v codex  &> /dev/null && echo "  Codex CLI:  $(codex --version 2>/dev/null || echo 'ok')"
 
     # Check end of sprint
     check_sprint() {

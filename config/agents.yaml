@@ -4,6 +4,18 @@
 # =============================================================================
 
 global:
+  # ---------------------------------------------------------------------------
+  # LLM provider — which coding CLI backs an agent.
+  #   claude   Claude Code CLI      — Anthropic Pro/Max subscription
+  #   codex    OpenAI Codex CLI     — ChatGPT Plus/Pro subscription (codex login)
+  #   minimax  Claude Code CLI      — MiniMax Coding Plan key, Anthropic-compatible
+  #
+  # Set per agent with `provider:` in its block below, to spread the work over
+  # several subscriptions instead of exhausting one rate limit.
+  # Override at runtime with AGENT_PROVIDER_<AGENT_ID>, e.g. AGENT_PROVIDER_DEV2=codex
+  # ---------------------------------------------------------------------------
+  default_provider: claude
+
   # Agent execution order within a single cycle
   execution_order:
     - po
@@ -180,6 +192,7 @@ agents:
   dev1:
     name: "Developer 1"
     color: "🟢"
+    # provider: claude    # claude | codex | minimax  (default: global.default_provider)
     system_prompt: |
       You are Developer 1 on an AI development team. You work alongside Developer 2.
 
@@ -221,6 +234,7 @@ agents:
   dev2:
     name: "Developer 2"
     color: "🟩"
+    # provider: codex     # run the second dev on the ChatGPT subscription
     system_prompt: |
       You are Developer 2 on an AI development team. You work alongside Developer 1.
 
