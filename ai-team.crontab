@@ -11,7 +11,10 @@
 
 # Environment
 SHELL=/bin/bash
-PATH=/usr/local/bin:/usr/bin:/bin:/home/ubuntu/.npm-global/bin
+# Keep this minimal: orchestrator_cli.sh prepends the user bin dirs where the
+# agent CLIs actually live ($HOME/.local/bin, npm global, nvm). cron does NOT
+# expand $HOME here, so never hardcode a home directory on this line.
+PATH=/usr/local/bin:/usr/bin:/bin
 AI_TEAM_DIR=/path/to/ai-team
 
 # -----------------------------------------------------------------------------

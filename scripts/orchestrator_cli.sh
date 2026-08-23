@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
-# AI Dev Team — Orchestrator (Claude Code CLI version)
-# For Claude Max subscription with Opus 4.5
+# AI Dev Team — Orchestrator
+# Runs each agent on its assigned coding CLI (claude / codex / minimax)
 # =============================================================================
 
 # NOTE: set -e is intentionally NOT used. This orchestrator must continue past
@@ -20,6 +20,20 @@ cd "$PROJECT_DIR" || { echo "$(date) [ERROR] Cannot cd to project dir: $PROJECT_
 
 # Ensure PATH for cron (where PATH is often limited)
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:$PATH"
+
+# Agent CLIs (claude, codex) are normally user-installed, and cron's PATH omits
+# those directories entirely. Without this the CLI check below finds nothing,
+# every agent is skipped, and the cycle is a silent no-op. Prepend the dirs that
+# actually exist so this works whatever the crontab PATH happens to say.
+for _bin_dir in "${HOME:-}/.local/bin" "${HOME:-}/.npm-global/bin" "${HOME:-}/bin"; do
+    [ -d "$_bin_dir" ] && export PATH="$_bin_dir:$PATH"
+done
+
+# npm globals under nvm live in a version-specific directory
+if [ -d "${NVM_DIR:-${HOME:-}/.nvm}/versions/node" ]; then
+    _nvm_bin=$(ls -d "${NVM_DIR:-${HOME:-}/.nvm}"/versions/node/*/bin 2>/dev/null | sort -V | tail -1)
+    [ -n "$_nvm_bin" ] && export PATH="$_nvm_bin:$PATH"
+fi
 
 # Unset CLAUDECODE — otherwise claude CLI refuses to run ("nested session")
 unset CLAUDECODE 2>/dev/null || true
@@ -43,7 +57,7 @@ trap "rm -f $LOCKFILE" EXIT
 
 echo ""
 echo "============================================"
-echo "  AI Dev Team — Claude Code CLI"
+echo "  AI Dev Team — Orchestrator"
 echo "  $(date)"
 echo "  Mode: ${MODE}"
 echo "============================================"
