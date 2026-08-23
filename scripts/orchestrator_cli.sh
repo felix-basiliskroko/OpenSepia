@@ -38,6 +38,11 @@ fi
 # Unset CLAUDECODE — otherwise claude CLI refuses to run ("nested session")
 unset CLAUDECODE 2>/dev/null || true
 
+# Stream Python output. stdout here is a redirected file (logs/cron.log under
+# cron), which Python block-buffers — so a cycle that hangs and gets killed
+# loses every agent progress line, exactly when the log matters most.
+export PYTHONUNBUFFERED=1
+
 # Mode: minimal | dev-team | security | all | <agent_name>
 MODE="${1:-dev-team}"
 
